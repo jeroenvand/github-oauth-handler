@@ -89,15 +89,18 @@ func (a *Authenticator) LoginURL() string {
 		a.clientID, a.callbackURL.String(), strings.Join(a.scope, "%20"))
 }
 
-func (a *Authenticator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.mu.Lock()
-	defer a.mu.Lock()
-	code := r.URL.Query().Get("code")
-	token, err := a.getAccessToken(code)
-	if err != nil {
-		http.Error(w, "error retrieving access token", http.StatusInternalServerError)
+func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Lock()
+		code := r.URL.Query().Get("code")
+		token, err := a.getAccessToken(code)
+		if err != nil {
+			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
+		}
+		a.currentToken = token
+		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
 	}
-	a.currentToken = token
 }
 
 func (a *Authenticator) getAccessToken(code string) (*oauth2.Token, error) {
