@@ -112,9 +112,9 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
 		}
 		a.currentToken = token
-		log.Println("redirecting to after login url: ", redirectAfterLogin.String())
-		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
-		log.Println("redirected")
+		fmt.Fprintf(w, "redirecting to after login url: %s", redirectAfterLogin.String())
+		//http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
+		//log.Println("redirected")
 	}
 }
 
