@@ -39,8 +39,17 @@ var AuthScopes = struct {
 	AdminRepoHook: "admin:repo_hook",
 }
 
+
+
 func (s GithubOauthScope) Valid() bool {
-	return reflectStructField(AuthScopes, string(s)) == nil
+	v := reflect.ValueOf(AuthScopes)
+
+	for i := 0; i< v.NumField(); i++ {
+		if v.Field(i).String() == string(s) {
+			return true
+		}
+	}
+	return false
 }
 
 func New(clientID string, clientSecret string, callbackURL *url.URL, opts AuthenticatorOpts) (*Authenticator, error) {
@@ -199,6 +208,7 @@ func reflectStructField(Iface interface{}, FieldName string) error {
 	}
 
 	// 'dereference' with Elem() and get the field by name
+	ValueIface.
 	Field := ValueIface.Elem().FieldByName(FieldName)
 	if !Field.IsValid() {
 		return fmt.Errorf("Interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
