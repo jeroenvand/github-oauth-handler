@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"golang.org/x/oauth2"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -102,6 +103,7 @@ func (a *Authenticator) LoginURL() string {
 
 func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Entering callback handler")
 		a.mu.Lock()
 		defer a.mu.Lock()
 		code := r.URL.Query().Get("code")
@@ -110,6 +112,7 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
 		}
 		a.currentToken = token
+		log.Println("redirecting to after login url: ", redirectAfterLogin.String())
 		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
 	}
 }
@@ -118,7 +121,7 @@ func (a *Authenticator) getAccessToken(code string) (*oauth2.Token, error) {
 
 	requestBodyMap := map[string]string{"client_id": a.clientID, "client_secret": a.clientSecret, "code": code}
 	requestJSON, _ := json.Marshal(requestBodyMap)
-
+	log.Println("fetching access token from github")
 	req, reqerr := http.NewRequest("POST", "https://github.com/login/oauth/access_token", bytes.NewBuffer(requestJSON))
 	if reqerr != nil {
 		return nil, reqerr
@@ -144,6 +147,7 @@ func (a *Authenticator) getAccessToken(code string) (*oauth2.Token, error) {
 
 	var ghresp githubAccessTokenResponse
 	_ = json.Unmarshal(respbody, &ghresp)
+	log.Println("received access token from github")
 
 	token := &oauth2.Token{
 		AccessToken:  ghresp.AccessToken,
