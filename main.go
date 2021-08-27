@@ -209,7 +209,6 @@ func reflectStructField(Iface interface{}, FieldName string) error {
 	}
 
 	// 'dereference' with Elem() and get the field by name
-	ValueIface.
 	Field := ValueIface.Elem().FieldByName(FieldName)
 	if !Field.IsValid() {
 		return fmt.Errorf("Interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
