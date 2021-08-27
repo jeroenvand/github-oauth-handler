@@ -45,6 +45,7 @@ func (s GithubOauthScope) Valid() bool {
 	v := reflect.ValueOf(AuthScopes)
 
 	for i := 0; i< v.NumField(); i++ {
+		fmt.Printf("Checking scope: %v, %v\n", v.Field(i).String(), string(s))
 		if v.Field(i).String() == string(s) {
 			return true
 		}
