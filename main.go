@@ -62,6 +62,7 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 		scopeStr = append(scopeStr, string(scope))
 	}
 	a := &Authenticator{
+		mu: &sync.Mutex{},
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		scope:       scopeStr,
