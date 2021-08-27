@@ -113,8 +113,9 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 		}
 		a.currentToken = token
 		fmt.Fprintf(w, "redirecting to after login url: %s", redirectAfterLogin.String())
+
 		//http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
-		//log.Println("redirected")
+		log.Println("callback handler finished")
 	}
 }
 
