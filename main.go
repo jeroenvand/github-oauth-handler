@@ -2,6 +2,8 @@ package github_oauth_handler
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/oauth2"
@@ -15,13 +17,17 @@ import (
 	"time"
 )
 
+const (
+	CookieName = "x-github-token"
+)
+
 type Authenticator struct {
 	mu           *sync.Mutex
 	clientID     string
 	clientSecret string
 	scope        []string
 	callbackURL  *url.URL
-	currentToken *oauth2.Token
+//	currentToken *oauth2.Token
 }
 
 type AuthenticatorOpts struct {
@@ -68,49 +74,84 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 		clientSecret: clientSecret,
 		scope:       scopeStr,
 		callbackURL:  callbackURL,
-		currentToken: nil,
+		//currentToken: nil,
 	}
 	return a, nil
 }
 
-func (a *Authenticator) Token() (*oauth2.Token, error) {
-	log.Println("getting lock")
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	log.Println("obtained lock")
-	if a.currentToken == nil {
-		// no token, must login first
-		return nil, fmt.Errorf("not authenticated")
-	}
-	if a.isTokenExpired() {
-		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
-		// token expired, try to refresh token
-		newToken, err := a.refreshToken()
-		if err != nil {
-			return nil, err
-		}
-		a.currentToken = newToken
-	}
-	log.Println("returning token: ", a.currentToken.AccessToken)
-	return &oauth2.Token{
-		AccessToken:  a.currentToken.AccessToken,
-		TokenType:    a.currentToken.TokenType,
-		RefreshToken: a.currentToken.RefreshToken,
-		Expiry:       a.currentToken.Expiry,
-	}, nil
-}
+//func (a *Authenticator) Token() (*oauth2.Token, error) {
+//	log.Println("getting lock")
+//	a.mu.Lock()
+//	defer a.mu.Unlock()
+//	log.Println("obtained lock")
+//	if a.currentToken == nil {
+//		// no token, must login first
+//		return nil, fmt.Errorf("not authenticated")
+//	}
+//	if a.isTokenExpired() {
+//		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
+//		// token expired, try to refresh token
+//		newToken, err := a.refreshToken()
+//		if err != nil {
+//			return nil, err
+//		}
+//		a.currentToken = newToken
+//	}
+//	log.Println("returning token: ", a.currentToken.AccessToken)
+//	return &oauth2.Token{
+//		AccessToken:  a.currentToken.AccessToken,
+//		TokenType:    a.currentToken.TokenType,
+//		RefreshToken: a.currentToken.RefreshToken,
+//		Expiry:       a.currentToken.Expiry,
+//	}, nil
+//}
 
-func (a *Authenticator) isTokenExpired() bool {
-	return a.currentToken != nil && !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
-}
-
-func (a *Authenticator) IsLoggedIn() bool {
-	return a.currentToken != nil
-}
+//func (a *Authenticator) isTokenExpired() bool {
+//	return a.currentToken != nil && !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
+//}
+//
+//func (a *Authenticator) IsLoggedIn() bool {
+//	return a.currentToken != nil
+//}
 
 func (a *Authenticator) LoginURL() string {
 	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=%s",
 		a.clientID, a.callbackURL.String(), strings.Join(a.scope, "%20"))
+}
+
+func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		// always let calls to the callback pass
+		if r.URL.Path == a.callbackURL.Path {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		var token *oauth2.Token
+
+		// try to fetch existing token from cookie
+		c, err := r.Cookie(CookieName)
+		if err == nil {
+			tokenStr, err := base64.StdEncoding.DecodeString(c.Value)
+			if err == nil {
+				err = json.Unmarshal(tokenStr, &token)
+				if err != nil {
+					token = nil
+				}
+			}
+		}
+
+		if token != nil && token.Valid() {
+			// if token is found & valid, use it
+			ctx := context.WithValue(r.Context(), "x-github-token", token)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		} else {
+			// otherwise, send user to Github for login & authorisation
+			http.Redirect(w, r, a.LoginURL(), http.StatusSeeOther)
+		}
+	}
+
+	return http.HandlerFunc(fn)
 }
 
 func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.HandlerFunc {
@@ -122,18 +163,31 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 		token, err := a.GetAccessToken(code)
 		if err != nil {
 			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
+			return
 		}
-		a.currentToken = token
+		//a.currentToken = token
 		log.Printf("redirecting to after login url: %s", redirectAfterLogin.String())
+		data, err := json.Marshal(token)
+		if err != nil {
+			http.Error(w, "error encoding token", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:       CookieName,
+			Value:      base64.StdEncoding.EncodeToString(data),
+			Path:       "/",
+			Secure:     false,
+			HttpOnly:   false,
+		})
 
 		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
 		log.Println("callback handler finished")
 	}
 }
 
-func (a *Authenticator) SetToken(token *oauth2.Token) {
-	a.currentToken = token
-}
+//func (a *Authenticator) SetToken(token *oauth2.Token) {
+//	a.currentToken = token
+//}
 
 func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 
@@ -181,12 +235,9 @@ func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 	return token, nil
 }
 
-func (a *Authenticator) refreshToken() (*oauth2.Token, error) {
-	if a.currentToken == nil {
-		return nil, fmt.Errorf("not authenticated")
-	}
+func (a *Authenticator) refreshToken(currentToken *oauth2.Token) (*oauth2.Token, error) {
 	requestBodyMap := map[string]string{"client_id": a.clientID, "client_secret": a.clientSecret,
-		"refresh_token": a.currentToken.RefreshToken, "grant_type": "refresh_token"}
+		"refresh_token": currentToken.RefreshToken, "grant_type": "refresh_token"}
 	requestJSON, _ := json.Marshal(requestBodyMap)
 
 	req, reqerr := http.NewRequest("POST", "https://github.com/login/oauth/access_token", bytes.NewBuffer(requestJSON))
@@ -215,31 +266,12 @@ func (a *Authenticator) refreshToken() (*oauth2.Token, error) {
 	var ghresp githubAccessTokenResponse
 	_ = json.Unmarshal(respbody, &ghresp)
 
-	token := &oauth2.Token{
+	newToken := &oauth2.Token{
 		AccessToken:  ghresp.AccessToken,
 		TokenType:    ghresp.TokenType,
 		RefreshToken: ghresp.RefreshToken,
 		Expiry:       time.Now().Add(time.Duration(ghresp.ExpiresIn) * time.Second),
 	}
-	return token, nil
+	return newToken, nil
 }
 
-// reflectStructField checks if an interface is either a struct or a pointer to a struct
-// and has the defined member field, if error is nil, the given
-// FieldName exists and is accessible with reflect.
-func reflectStructField(Iface interface{}, FieldName string) error {
-	ValueIface := reflect.ValueOf(Iface)
-
-	// Check if the passed interface is a pointer
-	if ValueIface.Type().Kind() != reflect.Ptr {
-		// Create a new type of Iface's Type, so we have a pointer to work with
-		ValueIface = reflect.New(reflect.TypeOf(Iface))
-	}
-
-	// 'dereference' with Elem() and get the field by name
-	Field := ValueIface.Elem().FieldByName(FieldName)
-	if !Field.IsValid() {
-		return fmt.Errorf("Interface `%s` does not have the field `%s`", ValueIface.Type(), FieldName)
-	}
-	return nil
-}
