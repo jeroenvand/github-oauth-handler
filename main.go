@@ -74,13 +74,17 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 }
 
 func (a *Authenticator) Token() (*oauth2.Token, error) {
+	log.Println("getting lock")
 	a.mu.Lock()
 	defer a.mu.Lock()
+	log.Println("obtained lock")
 	if a.currentToken == nil {
 		// no token, must login first
 		return nil, fmt.Errorf("not authenticated")
 	}
-	if time.Now().After(a.currentToken.Expiry) {
+	isExpired := time.Now().After(a.currentToken.Expiry)
+	if isExpired {
+		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
 		// token expired, try to refresh token
 		newToken, err := a.refreshToken()
 		if err != nil {
@@ -88,6 +92,7 @@ func (a *Authenticator) Token() (*oauth2.Token, error) {
 		}
 		a.currentToken = newToken
 	}
+	log.Println("returning token: ", a.currentToken.AccessToken)
 	return &oauth2.Token{
 		AccessToken:  a.currentToken.AccessToken,
 		TokenType:    a.currentToken.TokenType,
