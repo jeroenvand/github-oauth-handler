@@ -76,7 +76,7 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 func (a *Authenticator) Token() (*oauth2.Token, error) {
 	log.Println("getting lock")
 	a.mu.Lock()
-	defer a.mu.Lock()
+	defer a.mu.Unlock()
 	log.Println("obtained lock")
 	if a.currentToken == nil {
 		// no token, must login first
@@ -110,7 +110,7 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Entering callback handler")
 		a.mu.Lock()
-		defer a.mu.Lock()
+		defer a.mu.Unlock()
 		code := r.URL.Query().Get("code")
 		token, err := a.GetAccessToken(code)
 		if err != nil {
