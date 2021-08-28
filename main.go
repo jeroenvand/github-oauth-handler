@@ -17,9 +17,9 @@ import (
 	"time"
 )
 
-const (
-	CookieName = "x-github-token"
-)
+type ctxKeyGithubToken int
+const GithubTokenKey ctxKeyGithubToken = 0
+var CookieName = "x-github-token"
 
 type Authenticator struct {
 	mu           *sync.Mutex
@@ -45,8 +45,6 @@ var AuthScopes = struct {
 	RepoStatus:    "repo:status",
 	AdminRepoHook: "admin:repo_hook",
 }
-
-
 
 func (s GithubOauthScope) Valid() bool {
 	v := reflect.ValueOf(AuthScopes)
@@ -79,41 +77,6 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 	return a, nil
 }
 
-//func (a *Authenticator) Token() (*oauth2.Token, error) {
-//	log.Println("getting lock")
-//	a.mu.Lock()
-//	defer a.mu.Unlock()
-//	log.Println("obtained lock")
-//	if a.currentToken == nil {
-//		// no token, must login first
-//		return nil, fmt.Errorf("not authenticated")
-//	}
-//	if a.isTokenExpired() {
-//		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
-//		// token expired, try to refresh token
-//		newToken, err := a.refreshToken()
-//		if err != nil {
-//			return nil, err
-//		}
-//		a.currentToken = newToken
-//	}
-//	log.Println("returning token: ", a.currentToken.AccessToken)
-//	return &oauth2.Token{
-//		AccessToken:  a.currentToken.AccessToken,
-//		TokenType:    a.currentToken.TokenType,
-//		RefreshToken: a.currentToken.RefreshToken,
-//		Expiry:       a.currentToken.Expiry,
-//	}, nil
-//}
-
-//func (a *Authenticator) isTokenExpired() bool {
-//	return a.currentToken != nil && !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
-//}
-//
-//func (a *Authenticator) IsLoggedIn() bool {
-//	return a.currentToken != nil
-//}
-
 func (a *Authenticator) LoginURL() string {
 	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=%s",
 		a.clientID, a.callbackURL.String(), strings.Join(a.scope, "%20"))
@@ -143,7 +106,7 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 
 		if token != nil && token.Valid() {
 			// if token is found & valid, use it
-			ctx := context.WithValue(r.Context(), "x-github-token", token)
+			ctx := context.WithValue(r.Context(), GithubTokenKey, token)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			// otherwise, send user to Github for login & authorisation
@@ -184,10 +147,6 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 		log.Println("callback handler finished")
 	}
 }
-
-//func (a *Authenticator) SetToken(token *oauth2.Token) {
-//	a.currentToken = token
-//}
 
 func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 
@@ -235,7 +194,7 @@ func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 	return token, nil
 }
 
-func (a *Authenticator) refreshToken(currentToken *oauth2.Token) (*oauth2.Token, error) {
+func (a *Authenticator) RefreshToken(currentToken *oauth2.Token) (*oauth2.Token, error) {
 	requestBodyMap := map[string]string{"client_id": a.clientID, "client_secret": a.clientSecret,
 		"refresh_token": currentToken.RefreshToken, "grant_type": "refresh_token"}
 	requestJSON, _ := json.Marshal(requestBodyMap)
