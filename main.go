@@ -82,7 +82,7 @@ func (a *Authenticator) Token() (*oauth2.Token, error) {
 		// no token, must login first
 		return nil, fmt.Errorf("not authenticated")
 	}
-	isExpired := time.Now().After(a.currentToken.Expiry)
+	isExpired := !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
 	if isExpired {
 		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
 		// token expired, try to refresh token
@@ -159,12 +159,17 @@ func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 	var ghresp githubAccessTokenResponse
 	_ = json.Unmarshal(respbody, &ghresp)
 	log.Println("received access token from github")
+	log.Printf("token type: %s, token: %s, expires_in: %v", ghresp.TokenType, ghresp.AccessToken, ghresp.ExpiresIn)
 
+	var expiry time.Time
+	if ghresp.ExpiresIn > 0 {
+		expiry = time.Now().Add(time.Duration(ghresp.ExpiresIn) * time.Second)
+	}
 	token := &oauth2.Token{
 		AccessToken:  ghresp.AccessToken,
 		TokenType:    ghresp.TokenType,
 		RefreshToken: ghresp.RefreshToken,
-		Expiry:       time.Now().Add(time.Duration(ghresp.ExpiresIn) * time.Second),
+		Expiry:       expiry,
 	}
 	return token, nil
 }
