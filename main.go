@@ -119,6 +119,10 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 	}
 }
 
+func (a *Authenticator) SetToken(token *oauth2.Token) {
+	a.currentToken = token
+}
+
 func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 
 	requestBodyMap := map[string]string{"client_id": a.clientID, "client_secret": a.clientSecret, "code": code}
