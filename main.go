@@ -58,6 +58,16 @@ func (s GithubOauthScope) Valid() bool {
 	return false
 }
 
+func GetTokenFromContext(ctx context.Context) (*oauth2.Token, bool) {
+	v := ctx.Value(GithubTokenKey)
+	if v != nil {
+		if tkn, ok := v.(*oauth2.Token); ok {
+			return tkn, ok
+		}
+	}
+	return nil, false
+}
+
 func New(clientID string, clientSecret string, callbackURL *url.URL, opts AuthenticatorOpts) (*Authenticator, error) {
 	var scopeStr []string
 	for _, scope := range opts.Scope {
