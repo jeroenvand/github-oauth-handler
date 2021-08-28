@@ -107,7 +107,7 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 		a.mu.Lock()
 		defer a.mu.Lock()
 		code := r.URL.Query().Get("code")
-		token, err := a.getAccessToken(code)
+		token, err := a.GetAccessToken(code)
 		if err != nil {
 			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
 		}
@@ -119,7 +119,7 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 	}
 }
 
-func (a *Authenticator) getAccessToken(code string) (*oauth2.Token, error) {
+func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
 
 	requestBodyMap := map[string]string{"client_id": a.clientID, "client_secret": a.clientSecret, "code": code}
 	requestJSON, _ := json.Marshal(requestBodyMap)
