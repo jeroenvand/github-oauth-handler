@@ -82,8 +82,7 @@ func (a *Authenticator) Token() (*oauth2.Token, error) {
 		// no token, must login first
 		return nil, fmt.Errorf("not authenticated")
 	}
-	isExpired := !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
-	if isExpired {
+	if a.isTokenExpired() {
 		log.Println("token expired, now=%s, expiry=%s", time.Now().String(), a.currentToken.Expiry.String())
 		// token expired, try to refresh token
 		newToken, err := a.refreshToken()
@@ -99,6 +98,14 @@ func (a *Authenticator) Token() (*oauth2.Token, error) {
 		RefreshToken: a.currentToken.RefreshToken,
 		Expiry:       a.currentToken.Expiry,
 	}, nil
+}
+
+func (a *Authenticator) isTokenExpired() bool {
+	return a.currentToken != nil && !a.currentToken.Expiry.IsZero() && time.Now().After(a.currentToken.Expiry)
+}
+
+func (a *Authenticator) IsLoggedIn() bool {
+	return a.currentToken != nil
 }
 
 func (a *Authenticator) LoginURL() string {
