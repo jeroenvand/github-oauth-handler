@@ -1,4 +1,4 @@
-# Github Oauth Handler
+= Github Oauth Handler
 
 Simple package for handling Github oauth flow.
 

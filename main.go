@@ -15,12 +15,20 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/google/go-github/v35/github"
 )
 
 type ctxKeyGithubToken int
 const GithubTokenKey ctxKeyGithubToken = 0
+type ctxKeyGithubUser int
+const GithubUserKey ctxKeyGithubToken = 0
+
 var CookieName = "x-github-token"
 
+type Identity struct {
+	Username string
+	Token *oauth2.Token
+}
 type Authenticator struct {
 	mu           *sync.Mutex
 	clientID     string
@@ -68,6 +76,16 @@ func GetTokenFromContext(ctx context.Context) (*oauth2.Token, bool) {
 	return nil, false
 }
 
+func (a *Authenticator) GetUsernameFromContext(ctx context.Context) (string, bool) {
+	v := ctx.Value(GithubUserKey)
+	if v != nil {
+		if username, ok := v.(string); ok {
+			return username, ok
+		}
+	}
+	return "", false
+}
+
 func New(clientID string, clientSecret string, callbackURL *url.URL, opts AuthenticatorOpts) (*Authenticator, error) {
 	var scopeStr []string
 	for _, scope := range opts.Scope {
@@ -100,23 +118,24 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 			return
 		}
 
-		var token *oauth2.Token
+		var identity *Identity
 
 		// try to fetch existing token from cookie
 		c, err := r.Cookie(CookieName)
 		if err == nil {
-			tokenStr, err := base64.StdEncoding.DecodeString(c.Value)
+			data, err := base64.StdEncoding.DecodeString(c.Value)
 			if err == nil {
-				err = json.Unmarshal(tokenStr, &token)
+				err = json.Unmarshal(data, &identity)
 				if err != nil {
-					token = nil
+					identity = nil
 				}
 			}
 		}
 
-		if token != nil && token.Valid() {
+		if identity.Token != nil && identity.Token.Valid() {
 			// if token is found & valid, use it
-			ctx := context.WithValue(r.Context(), GithubTokenKey, token)
+			ctx := context.WithValue(r.Context(), GithubTokenKey, identity.Token)
+			ctx = context.WithValue(ctx, GithubUserKey, identity.Username)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		} else {
 			// otherwise, send user to Github for login & authorisation
@@ -138,9 +157,17 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 			http.Error(w, "error retrieving access token", http.StatusInternalServerError)
 			return
 		}
+		user, err := a.GetUserData(r.Context(), token)
+		if err != nil {
+			http.Error(w, "error retrieving user data", http.StatusInternalServerError)
+			return
+		}
 		//a.currentToken = token
 		log.Printf("redirecting to after login url: %s", redirectAfterLogin.String())
-		data, err := json.Marshal(token)
+		data, err := json.Marshal(Identity{
+			Username: user.GetLogin(),
+			Token:    token,
+		})
 		if err != nil {
 			http.Error(w, "error encoding token", http.StatusInternalServerError)
 			return
@@ -156,6 +183,30 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
 		log.Println("callback handler finished")
 	}
+}
+
+func (a *Authenticator) GetGithubClientFromRequest(r *http.Request) (*github.Client, error) {
+	ctx := r.Context()
+	token, ok := GetTokenFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("missing github token")
+	}
+	return a.makeGithubClient(ctx, token), nil
+}
+
+func (a *Authenticator) makeGithubClient(ctx context.Context, token *oauth2.Token) *github.Client {
+	ts := oauth2.StaticTokenSource(token)
+	tc := oauth2.NewClient(ctx, ts)
+	client := github.NewClient(tc)
+	return client
+}
+func (a *Authenticator) GetUserData(ctx context.Context, token *oauth2.Token) (*github.User, error) {
+	client := a.makeGithubClient(ctx, token)
+	user, _, err := client.Users.Get(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (a *Authenticator) GetAccessToken(code string) (*oauth2.Token, error) {
