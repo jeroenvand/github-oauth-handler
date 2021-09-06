@@ -1,0 +1,3 @@
+= Index of docs dir
+
+This is an index doc
