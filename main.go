@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/google/go-github/v35/github"
 	"golang.org/x/oauth2"
 	"io/ioutil"
 	"log"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/google/go-github/v35/github"
 )
 
 type ctxKeyGithubToken int
@@ -34,11 +34,12 @@ type Authenticator struct {
 	clientID     string
 	clientSecret string
 	scope        []string
-	callbackURL  *url.URL
-//	currentToken *oauth2.Token
+	redirectToAfterAuth 	*url.URL // redirect to after auth
+	oauthCallbackURL  *url.URL
 }
 
 type AuthenticatorOpts struct {
+	RedirectURL *url.URL
 	Scope []GithubOauthScope
 }
 
@@ -94,27 +95,30 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 		}
 		scopeStr = append(scopeStr, string(scope))
 	}
+	if opts.RedirectURL == nil {
+		opts.RedirectURL, _ = url.Parse("/")
+	}
 	a := &Authenticator{
 		mu: &sync.Mutex{},
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		scope:       scopeStr,
-		callbackURL:  callbackURL,
-		//currentToken: nil,
+		oauthCallbackURL:  callbackURL,
+		redirectToAfterAuth: opts.RedirectURL,
 	}
 	return a, nil
 }
 
 func (a *Authenticator) LoginURL() string {
 	return fmt.Sprintf("https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=%s",
-		a.clientID, a.callbackURL.String(), strings.Join(a.scope, "%20"))
+		a.clientID, a.oauthCallbackURL.String(), strings.Join(a.scope, "%20"))
 }
 
-func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
+func (a *Authenticator) Authenticate(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		// always let calls to the callback pass
-		if r.URL.Path == a.callbackURL.Path {
-			next.ServeHTTP(w, r)
+		if r.URL.Path == a.oauthCallbackURL.Path {
+			a.CallbackHandler(a.redirectToAfterAuth)
 			return
 		}
 
