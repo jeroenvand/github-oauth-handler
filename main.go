@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/google/go-github/v35/github"
 	"golang.org/x/oauth2"
 	"io/ioutil"
 	"log"
@@ -15,19 +16,21 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/google/go-github/v35/github"
 )
 
 type ctxKeyGithubToken int
+
 const GithubTokenKey ctxKeyGithubToken = 0
+
 type ctxKeyGithubUser int
+
 const GithubUserKey ctxKeyGithubToken = 0
 
 var CookieName = "x-github-token"
 
 type Identity struct {
 	Username string
-	Token *oauth2.Token
+	Token    *oauth2.Token
 }
 type Authenticator struct {
 	mu           *sync.Mutex
@@ -35,7 +38,7 @@ type Authenticator struct {
 	clientSecret string
 	scope        []string
 	callbackURL  *url.URL
-//	currentToken *oauth2.Token
+	//	currentToken *oauth2.Token
 }
 
 type AuthenticatorOpts struct {
@@ -57,7 +60,7 @@ var AuthScopes = struct {
 func (s GithubOauthScope) Valid() bool {
 	v := reflect.ValueOf(AuthScopes)
 
-	for i := 0; i< v.NumField(); i++ {
+	for i := 0; i < v.NumField(); i++ {
 		fmt.Printf("Checking scope: %v, %v\n", v.Field(i).String(), string(s))
 		if v.Field(i).String() == string(s) {
 			return true
@@ -74,6 +77,10 @@ func GetTokenFromContext(ctx context.Context) (*oauth2.Token, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (a *Authenticator) GetTokenFromContext(ctx context.Context) (*oauth2.Token, bool) {
+	return GetTokenFromContext(ctx)
 }
 
 func (a *Authenticator) GetUsernameFromContext(ctx context.Context) (string, bool) {
@@ -95,10 +102,10 @@ func New(clientID string, clientSecret string, callbackURL *url.URL, opts Authen
 		scopeStr = append(scopeStr, string(scope))
 	}
 	a := &Authenticator{
-		mu: &sync.Mutex{},
+		mu:           &sync.Mutex{},
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		scope:       scopeStr,
+		scope:        scopeStr,
 		callbackURL:  callbackURL,
 		//currentToken: nil,
 	}
@@ -173,11 +180,11 @@ func (a *Authenticator) CallbackHandler(redirectAfterLogin *url.URL) http.Handle
 			return
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name:       CookieName,
-			Value:      base64.StdEncoding.EncodeToString(data),
-			Path:       "/",
-			Secure:     false,
-			HttpOnly:   false,
+			Name:     CookieName,
+			Value:    base64.StdEncoding.EncodeToString(data),
+			Path:     "/",
+			Secure:   false,
+			HttpOnly: false,
 		})
 
 		http.Redirect(w, r, redirectAfterLogin.String(), http.StatusSeeOther)
@@ -294,4 +301,3 @@ func (a *Authenticator) RefreshToken(currentToken *oauth2.Token) (*oauth2.Token,
 	}
 	return newToken, nil
 }
-
