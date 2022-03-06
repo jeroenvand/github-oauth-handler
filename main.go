@@ -24,7 +24,7 @@ const GithubTokenKey ctxKeyGithubToken = 0
 
 type ctxKeyGithubUser int
 
-const GithubUserKey ctxKeyGithubToken = 0
+const GithubUserKey ctxKeyGithubUser = 0
 
 var CookieName = "x-github-token"
 
@@ -121,6 +121,7 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		// always let calls to the callback pass
 		if r.URL.Path == a.callbackURL.Path {
+			log.Println("github-auth: allowing callback to pass")
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -130,10 +131,12 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 		// try to fetch existing token from cookie
 		c, err := r.Cookie(CookieName)
 		if err == nil {
+			log.Println("github-auth: getting token from cookie")
 			data, err := base64.StdEncoding.DecodeString(c.Value)
 			if err == nil {
 				err = json.Unmarshal(data, &identity)
 				if err != nil {
+					log.Println("error decoding cookie: ", err.Error())
 					identity = nil
 				}
 			}
@@ -141,6 +144,7 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 
 		if identity != nil && identity.Token != nil && identity.Token.Valid() {
 			// if token is found & valid, use it
+			log.Println("adding token to context")
 			ctx := context.WithValue(r.Context(), GithubTokenKey, identity.Token)
 			ctx = context.WithValue(ctx, GithubUserKey, identity.Username)
 			next.ServeHTTP(w, r.WithContext(ctx))
