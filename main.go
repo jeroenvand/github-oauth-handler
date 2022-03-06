@@ -139,7 +139,7 @@ func (a *Authenticator) AuthenticateRequest(next http.Handler) http.Handler {
 			}
 		}
 
-		if identity.Token != nil && identity.Token.Valid() {
+		if identity != nil && identity.Token != nil && identity.Token.Valid() {
 			// if token is found & valid, use it
 			ctx := context.WithValue(r.Context(), GithubTokenKey, identity.Token)
 			ctx = context.WithValue(ctx, GithubUserKey, identity.Username)
